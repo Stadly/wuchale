@@ -136,6 +136,37 @@ export class AdapterHandler {
 
     compile = async (hmrVersion = -1) => {
         await Promise.all(this.allLocales.map(loc => this.#compileForLocale(loc, hmrVersion)))
+        await this.#writeManifests()
+    }
+
+    #buildManifest = (indexTracker: {
+        indices: Map<string, number>
+        nextIndex: number
+    }): Array<{ text: string[]; context?: string } | null> => {
+        const manifest = new Array<{ text: string[]; context?: string } | null>(indexTracker.nextIndex).fill(null)
+        for (const [key, index] of indexTracker.indices) {
+            const item = this.sharedState.catalog.get(key)
+            // URL items use different keys (link paths) that don't match catalog keys; leave them as null
+            if (item == null) {
+                continue
+            }
+            const entry: { text: string[]; context?: string } = { text: item.id }
+            if (item.context != null) {
+                entry.context = item.context
+            }
+            manifest[index] = entry
+        }
+        return manifest
+    }
+
+    #writeManifests = async () => {
+        await this.files.writeManifest(this.#buildManifest(this.sharedState.indexTracker), null)
+        if (!this.#adapter.granularLoad) {
+            return
+        }
+        for (const state of this.granularState.byID.values()) {
+            await this.files.writeManifest(this.#buildManifest(state.indexTracker), state.id)
+        }
     }
 
     saveStorageCompile = async () => {
